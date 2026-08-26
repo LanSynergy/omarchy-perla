@@ -1,0 +1,17 @@
+[package]
+name = "perla-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Audio I/O for perla-voice: cpal capture/playback, PCM16 24kHz resampling, mic level meter"
+
+[dependencies]
+cpal = "0.18.2"
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+
+[features]
+# Placeholder for acoustic echo cancellation (webrtc-audio-processing).
+# Off by default: without it, use headphones so the model doesn't hear itself.
+aec = []

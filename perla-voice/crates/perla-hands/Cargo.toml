@@ -1,0 +1,21 @@
+[package]
+name = "perla-hands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Perla's hands: a persistent headless grok-build session driven over ACP (JSON-RPC/stdio)"
+
+[dependencies]
+perla-tools = { workspace = true }
+perla-agents = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+dirs = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

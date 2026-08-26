@@ -1,0 +1,28 @@
+[package]
+name = "perla-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Demo TUI for the perla-voice engine: talk to Perla, watch agents work"
+
+[[bin]]
+name = "perla-h"
+path = "src/main.rs"
+
+[[bin]]
+name = "perla-d"
+path = "src/daemon.rs"
+
+[dependencies]
+perla-core = { workspace = true }
+perla-herdr = { workspace = true }
+
+tokio = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+dirs = { workspace = true }

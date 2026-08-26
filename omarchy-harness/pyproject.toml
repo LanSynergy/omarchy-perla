@@ -1,0 +1,17 @@
+[project]
+name = "omarchy-harness"
+version = "0.1.0"
+description = "Thin Hyprland/Omarchy computer-use harness: see, key, type, click, ax, script."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[project.scripts]
+omarchy-harness = "omarchy_harness.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

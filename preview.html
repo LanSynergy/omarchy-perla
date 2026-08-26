@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Perla on Omarchy — UI preview</title>
+  <style>
+    :root {
+      --bg: #1a1b26;
+      --bg-dark: #13141c;
+      --bar: #1a1b26;
+      --popup: #16161e;
+      --fg: #a9b1d6;
+      --fg-bright: #c0caf5;
+      --dim: #6d7596;
+      --muted: #414868;
+      --accent: #7aa2f7;
+      --urgent: #f7768e;
+      --green: #9ece6a;
+      --border: rgba(169, 177, 214, 0.28);
+      --fill: rgba(169, 177, 214, 0.04);
+      --hover: rgba(169, 177, 214, 0.08);
+      --bar-h: 26px;
+      --font: ui-monospace, "JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: var(--font);
+      background: var(--bg-dark);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+
+    .desk {
+      flex: 1;
+      position: relative;
+      background:
+        radial-gradient(1200px 600px at 70% 20%, #24283b 0%, transparent 55%),
+        linear-gradient(180deg, #13141c 0%, #0e0e14 100%);
+      overflow: hidden;
+    }
+
+    .bar {
+      height: var(--bar-h);
+      background: var(--bar);
+      border-bottom: 1px solid rgba(169, 177, 214, 0.08);
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 12px;
+      color: var(--fg);
+      user-select: none;
+    }
+
+    .bar-side {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .bar-side.right { justify-content: flex-end; }
+    .bar-center { display: flex; align-items: center; gap: 12px; }
+
+    .ws { display: flex; gap: 8px; color: var(--dim); }
+    .ws .on { color: var(--fg-bright); }
+
+    .glyph { opacity: 0.9; }
+
+    .perla-slot {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      position: relative;
+    }
+    .perla-slot:hover { background: var(--hover); }
+
+    .orb {
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+    .orb-glow {
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      opacity: 0.12;
+      background: currentColor;
+    }
+    .orb.listening .orb-glow { opacity: 0.22; transform: scale(1.15); }
+    .orb.speaking .orb-glow { opacity: 0.28; animation: pulse 1.2s ease-in-out infinite; }
+    .orb.driving .orb-glow { opacity: 0.32; }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.18; }
+      50% { transform: scale(1.35); opacity: 0.35; }
+    }
+
+    .mic {
+      width: 12px;
+      height: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .mic svg { display: block; width: 12px; height: 12px; fill: currentColor; }
+
+    .open-dot {
+      position: absolute;
+      left: 50%;
+      bottom: 1px;
+      width: 10px;
+      height: 2px;
+      margin-left: -5px;
+      border-radius: 1px;
+      background: var(--fg);
+      display: none;
+    }
+    .perla-slot.open .open-dot { display: block; }
+
+    .tooltip {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: #1f2335;
+      color: var(--fg-bright);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      padding: 4px 8px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(-2px);
+      transition: opacity 80ms linear;
+    }
+    .perla-slot:hover .tooltip { opacity: 1; }
+
+    .panel {
+      position: absolute;
+      top: calc(var(--bar-h) + 12px);
+      right: 12px;
+      width: 320px;
+      background: var(--popup);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 16px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      display: none;
+    }
+    .panel.show { display: block; }
+
+    .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--fg-bright);
+      letter-spacing: 0.2px;
+    }
+    .status {
+      font-size: 11px;
+      color: var(--dim);
+      margin-top: 2px;
+    }
+    .status.driving { color: var(--urgent); }
+
+    .transcript {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--fg);
+      line-height: 1.45;
+    }
+    .activity {
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--dim);
+    }
+    .meta {
+      margin-top: 12px;
+      font-size: 10px;
+      color: var(--dim);
+    }
+
+    .row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+
+    button.ctl, .field {
+      font: inherit;
+      font-size: 12px;
+      color: var(--fg);
+      background: var(--fill);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 6px 10px;
+    }
+    button.ctl { cursor: pointer; }
+    button.ctl:hover:not(:disabled) { background: var(--hover); }
+    button.ctl:disabled { opacity: 0.4; cursor: default; }
+    .field {
+      flex: 1;
+      min-width: 0;
+      color: var(--fg);
+      outline: none;
+    }
+    .field::placeholder { color: var(--dim); }
+    .field:focus { border-color: rgba(122, 162, 247, 0.55); background: var(--hover); }
+    .field:disabled { opacity: 0.4; }
+
+    .hint {
+      position: absolute;
+      left: 24px;
+      bottom: 24px;
+      font-size: 11px;
+      color: var(--dim);
+      max-width: 420px;
+      line-height: 1.5;
+    }
+    .hint kbd {
+      font: inherit;
+      font-size: 10px;
+      border: 1px solid var(--muted);
+      padding: 1px 5px;
+      border-radius: 2px;
+      color: var(--fg);
+    }
+
+    .rail {
+      background: var(--bg);
+      border-top: 1px solid rgba(169, 177, 214, 0.1);
+      padding: 14px 18px 18px;
+      display: grid;
+      gap: 10px;
+    }
+    .rail h1 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--fg-bright);
+    }
+    .rail p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--dim);
+      max-width: 920px;
+      line-height: 1.45;
+    }
+    .states {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .states button {
+      font: inherit;
+      font-size: 11px;
+      color: var(--fg);
+      background: transparent;
+      border: 1px solid var(--border);
+      padding: 5px 9px;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+    .states button.on {
+      background: rgba(122, 162, 247, 0.16);
+      border-color: var(--accent);
+      color: var(--fg-bright);
+    }
+    .note { font-size: 11px; color: var(--dim); }
+    .sep { height: 1px; background: var(--border); margin: 14px 0 10px; }
+    .section { font-size: 10px; letter-spacing: 1px; color: var(--dim); font-weight: 700; margin-bottom: 8px; }
+    .trow {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(169,177,214,0.08);
+    }
+    .trow .lab { font-size: 12px; color: var(--fg-bright); font-weight: 700; }
+    .trow .desc { font-size: 10px; color: var(--dim); margin-top: 2px; }
+    .sw {
+      width: 32px; height: 18px; border-radius: 9px;
+      background: var(--muted); position: relative; flex: none;
+    }
+    .sw.on { background: var(--accent); }
+    .sw::after {
+      content: ""; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%; background: var(--fg-bright);
+    }
+    .sw.on::after { left: 16px; }
+    .warn { font-size: 11px; color: var(--urgent); margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="desk">
+    <div class="bar">
+      <div class="bar-side">
+        <span class="glyph">󰣇</span>
+        <div class="ws"><span class="on">1</span><span>2</span><span>3</span></div>
+      </div>
+      <div class="bar-center">
+        <span>Saturday 21:14</span>
+      </div>
+      <div class="bar-side right">
+        <span class="glyph">󰤨</span>
+        <span class="glyph">󰕾</span>
+        <div class="perla-slot" id="slot" title="">
+          <div class="orb" id="orb">
+            <div class="orb-glow"></div>
+            <div class="mic" id="mic"></div>
+          </div>
+          <div class="open-dot"></div>
+          <div class="tooltip" id="tip">Disconnected</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel">
+      <div class="title">Perla</div>
+      <div class="status" id="statusLine">Disconnected</div>
+      <div class="transcript" id="transcript" hidden></div>
+      <div class="activity" id="activity" hidden></div>
+      <div class="meta" id="meta" hidden></div>
+      <div class="row">
+        <button class="ctl" id="btnStart">Start</button>
+        <button class="ctl" id="btnStop" disabled>Stop</button>
+        <button class="ctl" id="btnMute" disabled>Mute</button>
+      </div>
+      <div class="row">
+        <input class="field" id="send" placeholder="Send text" disabled />
+        <button class="ctl" id="btnSend" disabled>Send</button>
+      </div>
+      <div class="sep"></div>
+      <div class="section">SETTINGS</div>
+      <div class="warn" id="keyWarn">Add an OpenAI API key to talk.</div>
+      <div class="trow">
+        <div><div class="lab">Voice</div><div class="desc">Connect the realtime session</div></div>
+        <div class="sw" id="swVoice"></div>
+      </div>
+      <div class="trow">
+        <div><div class="lab">Mute</div><div class="desc">Keep listening off until you unmute</div></div>
+        <div class="sw" id="swMute"></div>
+      </div>
+      <div class="trow">
+        <div><div class="lab">Start muted</div><div class="desc">Join the next session with the mic off</div></div>
+        <div class="sw" id="swStartMuted"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <input class="field" placeholder="OpenAI key" type="password" />
+      </div>
+      <div class="row">
+        <input class="field" placeholder="Grok key" type="password" />
+        <button class="ctl">Save keys</button>
+      </div>
+    </div>
+
+    <div class="hint">
+      Left-click the mic to listen / mute.<br />
+      Right-click opens this panel. <kbd>Esc</kbd> closes it.<br />
+      The real widget uses the Omarchy nerd-font mic glyph and follows the active theme.
+    </div>
+  </div>
+
+  <div class="rail">
+    <h1>Perla bar widget — HTML stand-in of the QML</h1>
+    <p>
+      This is not the live plugin. It is the same layout as <code>BarWidget.qml</code> + <code>Panel.qml</code>:
+      a 26px bar chip on the right, a 320px panel anchored under it, theme tokens from Tokyo Night.
+      Click a state to see how the orb and panel change before you copy the folder onto Omarchy.
+    </p>
+    <div class="states" id="states"></div>
+    <div class="note">
+      Ready to move: copy <code>perla-plugin/</code> to <code>~/.config/omarchy/plugins/nawaf.perla/</code>,
+      then <code>omarchy plugin validate</code> and <code>omarchy plugin enable nawaf.perla</code>.
+      The daemon (<code>perla-d</code>) must be running or the orb stays disconnected.
+    </div>
+  </div>
+
+  <script>
+    const MIC = `<svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/></svg>`;
+    const MIC_OFF = `<svg viewBox="0 0 24 24"><path d="M19 11h-2a5 5 0 0 1-.4 2l1.5 1.5A6.9 6.9 0 0 0 19 11zM12 4a3 3 0 0 1 3 3v.2L7.2 15A5 5 0 0 1 7 11V6a5 5 0 0 1 5-5 4.9 4.9 0 0 1 3.5 1.5L17 1l1.4 1.4-16 16L1 17l4.2-4.2A6.9 6.9 0 0 0 5 11H3a9 9 0 0 0 6 8.5V23h6v-3.5a8.8 8.8 0 0 0 2.3-.9L19.6 21 21 19.6 12 10.6V6a3 3 0 0 1 .1-2z"/></svg>`;
+
+    const STATES = {
+      disconnected: {
+        status: "disconnected", speaker: "idle", muted: false, driving: false,
+        label: "Disconnected", color: "dim",
+        transcript: "", activity: "", meta: ""
+      },
+      connected: {
+        status: "connected", speaker: "idle", muted: false, driving: false,
+        label: "Connected", color: "fg",
+        transcript: "", activity: "", meta: ""
+      },
+      listening: {
+        status: "connected", speaker: "user", muted: false, driving: false,
+        label: "Listening", color: "fg",
+        transcript: "You: open the browser", activity: "", meta: ""
+      },
+      speaking: {
+        status: "connected", speaker: "model", muted: false, driving: false,
+        label: "Speaking", color: "accent",
+        transcript: "Perla: Opening Chromium.", activity: "", meta: ""
+      },
+      working: {
+        status: "tool_running", speaker: "idle", muted: false, driving: false,
+        label: "Working", color: "fg",
+        transcript: "You: what windows are open",
+        activity: "Reading hyprctl clients",
+        meta: "Session $0.04"
+      },
+      driving: {
+        status: "tool_running", speaker: "idle", muted: false, driving: true,
+        label: "Driving", color: "urgent",
+        transcript: "You: play Alessia Cara on Spotify",
+        activity: "omarchy-harness · typing into Spotify",
+        meta: "Session $0.12"
+      },
+      muted: {
+        status: "connected", speaker: "idle", muted: true, driving: false,
+        label: "Muted", color: "dim",
+        transcript: "Perla: Muted. Click to listen.", activity: "", meta: ""
+      }
+    };
+
+    const slot = document.getElementById("slot");
+    const orb = document.getElementById("orb");
+    const mic = document.getElementById("mic");
+    const tip = document.getElementById("tip");
+    const panel = document.getElementById("panel");
+    const statusLine = document.getElementById("statusLine");
+    const transcript = document.getElementById("transcript");
+    const activity = document.getElementById("activity");
+    const meta = document.getElementById("meta");
+    const btnStart = document.getElementById("btnStart");
+    const btnStop = document.getElementById("btnStop");
+    const btnMute = document.getElementById("btnMute");
+    const send = document.getElementById("send");
+    const btnSend = document.getElementById("btnSend");
+    const statesEl = document.getElementById("states");
+
+    let current = "listening";
+    let open = true;
+
+    function paint(name) {
+      current = name;
+      const s = STATES[name];
+      const connected = s.status === "connected" || s.status === "tool_running";
+      const color = s.color === "urgent" ? "var(--urgent)"
+        : s.color === "accent" ? "var(--accent)"
+        : s.color === "fg" ? "var(--fg)"
+        : "var(--dim)";
+
+      orb.style.color = color;
+      orb.className = "orb" +
+        (s.speaker === "user" && !s.muted ? " listening" : "") +
+        (s.speaker === "model" ? " speaking" : "") +
+        (s.driving ? " driving" : "");
+      mic.innerHTML = (s.muted || s.status === "disconnected") ? MIC_OFF : MIC;
+      tip.textContent = s.label;
+      slot.classList.toggle("open", open);
+      panel.classList.toggle("show", open);
+
+      statusLine.textContent = s.label;
+      statusLine.classList.toggle("driving", s.driving);
+
+      transcript.hidden = !s.transcript;
+      transcript.textContent = s.transcript;
+      activity.hidden = !s.activity;
+      activity.textContent = s.activity;
+      meta.hidden = !s.meta;
+      meta.textContent = s.meta;
+
+      btnStart.disabled = connected;
+      btnStop.disabled = s.status === "disconnected";
+      btnMute.disabled = !connected;
+      send.disabled = !connected;
+      btnSend.disabled = !connected;
+      document.getElementById("swVoice").classList.toggle("on", connected);
+      document.getElementById("swMute").classList.toggle("on", s.muted);
+      document.getElementById("keyWarn").hidden = name !== "disconnected";
+
+      [...statesEl.children].forEach((b) => b.classList.toggle("on", b.dataset.state === name));
+    }
+
+    Object.keys(STATES).forEach((name) => {
+      const b = document.createElement("button");
+      b.textContent = STATES[name].label;
+      b.dataset.state = name;
+      b.onclick = () => paint(name);
+      statesEl.appendChild(b);
+    });
+
+    slot.addEventListener("click", (e) => {
+      if (e.button !== 0) return;
+      if (current === "disconnected") paint("listening");
+      else if (current === "muted" || current === "connected") paint("listening");
+      else paint("muted");
+    });
+    slot.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      open = !open;
+      paint(current);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && open) {
+        open = false;
+        paint(current);
+      }
+    });
+    btnStart.onclick = () => paint("listening");
+    btnStop.onclick = () => paint("disconnected");
+    btnMute.onclick = () => paint(current === "muted" ? "listening" : "muted");
+    btnSend.onclick = () => {
+      if (send.value.trim()) paint("working");
+    };
+    send.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btnSend.click();
+    });
+
+    paint("listening");
+  </script>
+</body>
+</html>

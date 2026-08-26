@@ -1,0 +1,19 @@
+[package]
+name = "perla-herdr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Herdr integration: Perla lives in a pane, sees the whole board, and spawns visible agents/commands in tabs"
+
+[dependencies]
+perla-tools = { workspace = true }
+perla-agents = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+dirs = { workspace = true }
+rand = { workspace = true }

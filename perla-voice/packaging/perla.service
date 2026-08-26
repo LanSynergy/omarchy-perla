@@ -1,0 +1,16 @@
+[Unit]
+Description=Perla voice assistant
+Documentation=file:///usr/share/doc/perla-voice
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/perla-d serve
+Restart=on-failure
+RestartSec=2
+# Audio + compositor sockets come from the graphical session.
+Environment=XDG_RUNTIME_DIR=%t
+
+[Install]
+WantedBy=graphical-session.target
