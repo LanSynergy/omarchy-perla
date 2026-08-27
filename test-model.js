@@ -36,6 +36,34 @@ assert.strictEqual(keyed.provider, "grok")
 assert.strictEqual(keyed.model, "grok-4-fast-realtime")
 assert.strictEqual(Model.settingsHint(keyed), "")
 
+
+const geminiKeyed = Model.parseState(JSON.stringify({
+  status: "disconnected",
+  provider: "gemini",
+  has_gemini_key: true,
+  has_key: true
+}))
+assert.strictEqual(geminiKeyed.provider, "gemini")
+assert.strictEqual(geminiKeyed.model, "models/gemini-2.0-flash-exp")
+assert.strictEqual(geminiKeyed.has_gemini_key, true)
+assert.strictEqual(geminiKeyed.voice, "Puck")
+assert.strictEqual(Model.voiceValue(geminiKeyed), "Puck")
+assert.strictEqual(Model.settingsHint(geminiKeyed), "")
+assert.ok(Model.realtimeModelOptions(geminiKeyed).some(function(opt) {
+  return opt.value === "models/gemini-2.0-flash-exp"
+}))
+assert.ok(Model.voiceOptions(geminiKeyed).some(function(opt) {
+  return opt.value === "Puck"
+}))
+assert.ok(Model.voiceOptions(geminiKeyed).some(function(opt) {
+  return opt.value === "Charon"
+}))
+
+const geminiUnkeyed = Model.parseState(JSON.stringify({
+  provider: "gemini",
+  has_key: false
+}))
+assert.ok(Model.settingsHint(geminiUnkeyed).indexOf("Gemini") >= 0)
 const modelState = Model.parseState(JSON.stringify({
   provider: "openai",
   model: "gpt-realtime-2.1",

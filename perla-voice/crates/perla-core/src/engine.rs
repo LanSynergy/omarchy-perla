@@ -540,6 +540,7 @@ impl Actor {
             dialect: match resolved.kind {
                 ProviderKind::OpenAi => Dialect::OpenAi,
                 ProviderKind::Grok => Dialect::Grok,
+                ProviderKind::Gemini => Dialect::Gemini,
             },
             url: resolved.url,
             api_key: resolved.api_key,

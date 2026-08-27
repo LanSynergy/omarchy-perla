@@ -49,6 +49,7 @@ struct Snapshot {
     progress_mode: String,
     has_openai_key: bool,
     has_grok_key: bool,
+    has_gemini_key: bool,
     has_key: bool,
     start_muted: bool,
     voice: String,
@@ -76,6 +77,7 @@ impl Snapshot {
             progress_mode: "off".into(),
             has_openai_key: false,
             has_grok_key: false,
+            has_gemini_key: false,
             has_key: false,
             start_muted: false,
             voice: "marin".into(),
@@ -89,6 +91,7 @@ impl Snapshot {
         self.progress_mode = public.progress_mode.clone();
         self.has_openai_key = public.has_openai_key;
         self.has_grok_key = public.has_grok_key;
+        self.has_gemini_key = public.has_gemini_key;
         self.has_key = public.has_key;
         self.start_muted = public.start_muted;
         self.voice = public.voice.clone();
@@ -614,6 +617,7 @@ async fn dispatch_cmd(
                 "progress_mode": s.progress_mode,
                 "has_openai_key": s.has_openai_key,
                 "has_grok_key": s.has_grok_key,
+                "has_gemini_key": s.has_gemini_key,
                 "has_key": s.has_key,
                 "start_muted": s.start_muted,
                 "voice": s.voice,
@@ -649,6 +653,7 @@ async fn dispatch_cmd(
                         "progress_mode": public.progress_mode,
                         "has_openai_key": public.has_openai_key,
                         "has_grok_key": public.has_grok_key,
+                        "has_gemini_key": public.has_gemini_key,
                         "has_key": public.has_key,
                         "start_muted": public.start_muted,
                         "voice": public.voice,
@@ -862,9 +867,9 @@ async fn main() -> Result<()> {
                 parts.extend(args);
                 let text = parts.join(" ");
                 let includes_key = serde_json::from_str::<SettingsPatch>(&text)
-                    .map(|patch| patch.openai_key.is_some() || patch.grok_key.is_some())
+                    .map(|patch| patch.openai_key.is_some() || patch.grok_key.is_some() || patch.gemini_key.is_some())
                     .unwrap_or_else(|_| {
-                        text.contains("\"openai_key\"") || text.contains("\"grok_key\"")
+                        text.contains("\"openai_key\"") || text.contains("\"grok_key\"") || text.contains("\"gemini_key\"")
                     });
                 if includes_key {
                     anyhow::bail!("API keys must use: perla-d set-config --stdin");

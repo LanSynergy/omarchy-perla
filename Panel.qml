@@ -35,8 +35,9 @@ Panel {
   property bool setupComputerUse: false
   property bool setupLaunched: false
   readonly property bool settingsEditing: openaiKey.activeFocus || grokKey.activeFocus
-    || sendField.activeFocus || providerBox.popupOpen || modelBox.popupOpen
-    || progressBox.popupOpen || languageBox.popupOpen
+    || geminiKey.activeFocus || sendField.activeFocus || providerBox.popupOpen
+    || modelBox.popupOpen || voiceBox.popupOpen || progressBox.popupOpen
+    || languageBox.popupOpen
 
   function open() {
     if (root.perla) root.perla.probeInstall()
@@ -378,6 +379,7 @@ Panel {
               label: "Provider"
               value: root.perla ? String(root.perla.provider || "openai") : "openai"
               options: [
+                { value: "gemini", label: "Gemini (Google AI Studio · Free)" },
                 { value: "openai", label: "OpenAI" },
                 { value: "grok", label: "Grok (xAI)" }
               ]
@@ -405,13 +407,30 @@ Panel {
 
             Text {
               width: parent.width
-              text: root.perla && root.perla.provider === "openai"
-                ? "Mini is the production default: faster and much cheaper. Model changes restart the voice session."
-                : "Model changes restart the voice session."
+              text: root.perla && root.perla.provider === "gemini"
+                ? "Gemini 2.0 Flash is free on Google AI Studio. Model changes restart the voice session."
+                : (root.perla && root.perla.provider === "openai"
+                  ? "Mini is the production default: faster and much cheaper. Model changes restart the voice session."
+                  : "Model changes restart the voice session.")
               color: root.dim
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
               wrapMode: Text.WordWrap
+            }
+
+            Dropdown {
+              id: voiceBox
+              width: parent.width
+              label: "Voice"
+              value: Model.voiceValue(root.perla)
+              options: Model.voiceOptions(root.perla)
+              foreground: root.contentForeground
+              fontFamily: root.contentFontFamily
+              onChanged: function(value) {
+                if (root.perla && value !== Model.voiceValue(root.perla)) {
+                  root.perla.setVoice(value)
+                }
+              }
             }
 
             Dropdown {
@@ -486,6 +505,27 @@ Panel {
               }
             }
 
+            Column {
+              width: parent.width
+              spacing: Style.space(4)
+
+              Text {
+                text: "GEMINI KEY (FREE · AISTUDIO.GOOGLE.COM)"
+                color: root.dim
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+              TextField {
+                id: geminiKey
+                width: parent.width
+                password: true
+                placeholderText: Model.maskKeyHint(root.perla && root.perla.has_gemini_key)
+                foreground: root.contentForeground
+                Keys.onEscapePressed: root.close()
+              }
+            }
+
             Button {
               // The mirror of the setup button: same script directory, same
               // visible terminal, nothing removed without the user watching.
@@ -506,13 +546,14 @@ Panel {
               text: "Save keys"
               foreground: root.contentForeground
               fontFamily: root.contentFontFamily
-              enabled: openaiKey.text !== "" || grokKey.text !== ""
+              enabled: openaiKey.text !== "" || grokKey.text !== "" || geminiKey.text !== ""
               opacity: enabled ? 1.0 : 0.4
               onClicked: {
                 if (!root.perla) return
-                root.perla.saveKeys(openaiKey.text, grokKey.text)
+                root.perla.saveKeys(openaiKey.text, grokKey.text, geminiKey.text)
                 openaiKey.text = ""
                 grokKey.text = ""
+                geminiKey.text = ""
               }
             }
           }

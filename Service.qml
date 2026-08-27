@@ -50,6 +50,7 @@ Item {
   property string progress_mode: "off"
   property bool has_openai_key: false
   property bool has_grok_key: false
+  property bool has_gemini_key: false
   property bool has_key: false
   property bool start_muted: false
   property string voice: "marin"
@@ -92,6 +93,7 @@ Item {
     progress_mode = parsed.progress_mode
     has_openai_key = parsed.has_openai_key === true
     has_grok_key = parsed.has_grok_key === true
+    has_gemini_key = parsed.has_gemini_key === true
     has_key = parsed.has_key === true
     start_muted = parsed.start_muted === true
     voice = parsed.voice || "marin"
@@ -193,17 +195,23 @@ Item {
     saveSettings({ voice_language: String(code || "auto") })
   }
 
+  function setVoice(name) {
+    saveSettings({ voice: String(name || "Puck") })
+  }
+
   // The daemon owns the trail and the clipboard call — the panel only asks.
   function copyDebugLog() {
     runDaemon(["log", "--copy"])
   }
 
-  function saveKeys(openaiKey, grokKey) {
+  function saveKeys(openaiKey, grokKey, geminiKey) {
     var patch = {}
     var open = String(openaiKey || "").replace(/^\s+|\s+$/g, "")
     var grok = String(grokKey || "").replace(/^\s+|\s+$/g, "")
+    var gemini = String(geminiKey || "").replace(/^\s+|\s+$/g, "")
     if (open !== "") patch.openai_key = open
     if (grok !== "") patch.grok_key = grok
+    if (gemini !== "") patch.gemini_key = gemini
     if (Object.keys(patch).length === 0) return
     saveSettings(patch)
   }

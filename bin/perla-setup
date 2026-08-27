@@ -156,7 +156,15 @@ build_from_source() {
 }
 
 download_release() {
-  local base="https://github.com/inawafalm/omarchy-perla/releases/download/v$VERSION"
+  local repo_url
+  repo_url="$(git -C "$ROOT" config --get remote.origin.url 2>/dev/null || echo "https://github.com/inawafalm/omarchy-perla")"
+  repo_url="${repo_url%.git}"
+  repo_url="${repo_url#git@github.com:}"
+  case "$repo_url" in
+    http*://github.com/*) ;;
+    *) repo_url="https://github.com/$repo_url" ;;
+  esac
+  local base="$repo_url/releases/download/v$VERSION"
   local archive="perla-d-$TARGET.tar.gz"
   local tmp
   tmp="$(mktemp -d)"
@@ -225,7 +233,7 @@ fi
 ENV_FILE="$HOME/.config/perla-voice/env"
 
 found_env_key() {
-  [ -n "${PERLA_OPENAI_API_KEY:-}${OPENAI_API_KEY:-}${PERLA_XAI_API_KEY:-}${XAI_API_KEY:-}" ]
+  [ -n "${PERLA_OPENAI_API_KEY:-}${OPENAI_API_KEY:-}${PERLA_XAI_API_KEY:-}${XAI_API_KEY:-}${PERLA_GEMINI_API_KEY:-}${GEMINI_API_KEY:-}" ]
 }
 
 if found_env_key; then
@@ -244,7 +252,7 @@ if found_env_key; then
   if [ "$import_it" = true ]; then
     umask 077
     : >"$ENV_FILE"
-    for var in PERLA_OPENAI_API_KEY OPENAI_API_KEY PERLA_XAI_API_KEY XAI_API_KEY; do
+    for var in PERLA_OPENAI_API_KEY OPENAI_API_KEY PERLA_XAI_API_KEY XAI_API_KEY PERLA_GEMINI_API_KEY GEMINI_API_KEY; do
       value="${!var:-}"
       [ -n "$value" ] && printf '%s=%s\n' "$var" "$value" >>"$ENV_FILE"
     done
@@ -274,7 +282,7 @@ echo
 if [ -s "$ENV_FILE" ]; then
   echo "  Click the pearl in your bar and say something — your key is already in."
 else
-  echo "  Click the pearl in your bar, paste your own OpenAI or xAI API key,"
+  echo "  Click the pearl in your bar, paste your own Gemini, OpenAI, or xAI API key,"
   echo "  and press Save. Then say something."
 fi
 echo

@@ -18,6 +18,15 @@ impl ToolDef {
             "parameters": self.parameters,
         })
     }
+
+    /// Gemini Bidi functionDeclarations shape.
+    pub fn gemini_shape(&self) -> Value {
+        json!({
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+        })
+    }
 }
 
 /// Result of a tool call, sent back to the model as `function_call_output`.

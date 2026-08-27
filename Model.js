@@ -25,6 +25,7 @@ function defaultState() {
     progress_mode: "off",
     has_openai_key: false,
     has_grok_key: false,
+    has_gemini_key: false,
     has_key: false,
     start_muted: false,
     voice: "marin",
@@ -54,9 +55,37 @@ var GROK_MODELS = [
   { value: "grok-4-fast-realtime", label: "Grok 4 Fast Realtime" }
 ]
 
+var GEMINI_MODELS = [
+  { value: "models/gemini-2.0-flash-exp", label: "Gemini 2.0 Flash (Free)" },
+  { value: "models/gemini-2.0-flash", label: "Gemini 2.0 Flash GA (Free)" }
+]
+
+var GEMINI_VOICES = [
+  { value: "Puck", label: "Puck" },
+  { value: "Charon", label: "Charon" },
+  { value: "Kore", label: "Kore" },
+  { value: "Fenrir", label: "Fenrir" },
+  { value: "Aoede", label: "Aoede" }
+]
+
+var OPENAI_VOICES = [
+  { value: "marin", label: "Marin" },
+  { value: "alloy", label: "Alloy" },
+  { value: "ash", label: "Ash" },
+  { value: "ballad", label: "Ballad" },
+  { value: "coral", label: "Coral" },
+  { value: "echo", label: "Echo" },
+  { value: "sage", label: "Sage" },
+  { value: "shimmer", label: "Shimmer" },
+  { value: "verse", label: "Verse" }
+]
 function realtimeModelOptions(perla) {
-  var provider = perla && perla.provider === "grok" ? "grok" : "openai"
-  var base = provider === "grok" ? GROK_MODELS : OPENAI_MODELS
+  var provider = perla && perla.provider === "gemini"
+    ? "gemini"
+    : (perla && perla.provider === "grok" ? "grok" : "openai")
+  var base = provider === "gemini"
+    ? GEMINI_MODELS
+    : (provider === "grok" ? GROK_MODELS : OPENAI_MODELS)
   var current = perla && perla.model ? String(perla.model) : ""
   var result = []
   var known = false
@@ -71,9 +100,19 @@ function realtimeModelOptions(perla) {
 
 function realtimeModelValue(perla) {
   if (perla && perla.model) return String(perla.model)
+  if (perla && perla.provider === "gemini") return "models/gemini-2.0-flash-exp"
   return perla && perla.provider === "grok"
     ? "grok-4-fast-realtime"
     : "gpt-realtime-2.1-mini"
+}
+
+function voiceOptions(perla) {
+  return perla && perla.provider === "gemini" ? GEMINI_VOICES : OPENAI_VOICES
+}
+
+function voiceValue(perla) {
+  if (perla && perla.voice) return String(perla.voice)
+  return perla && perla.provider === "gemini" ? "Puck" : "marin"
 }
 
 function progressModeOptions() {
@@ -140,7 +179,7 @@ function parseState(jsonText) {
   try {
     var data = JSON.parse(raw)
     if (!data || typeof data !== "object") return fallback
-    var provider = oneOf(data.provider, ["openai", "grok"], fallback.provider)
+    var provider = oneOf(data.provider, ["openai", "grok", "gemini"], fallback.provider)
     return {
       status: oneOf(data.status, STATUSES, fallback.status),
       speaker: oneOf(data.speaker, SPEAKERS, fallback.speaker),
@@ -156,16 +195,16 @@ function parseState(jsonText) {
       last_transcript: parseTranscript(data.last_transcript),
       pid: Math.max(0, asInt(data.pid, fallback.pid)),
       provider: provider,
-      model: asNullableString(data.model) || (provider === "grok"
-        ? "grok-4-fast-realtime"
-        : fallback.model),
+      model: asNullableString(data.model) || (provider === "gemini"
+        ? "models/gemini-2.0-flash-exp"
+        : (provider === "grok" ? "grok-4-fast-realtime" : fallback.model)),
       progress_mode: oneOf(data.progress_mode, ["off", "big", "steps"], fallback.progress_mode),
       has_openai_key: data.has_openai_key === true,
       has_grok_key: data.has_grok_key === true,
+      has_gemini_key: data.has_gemini_key === true,
       has_key: data.has_key === true,
       start_muted: data.start_muted === true,
-      voice: asNullableString(data.voice) || fallback.voice,
-      // null / absent = Auto: the model replies in whatever the user speaks.
+      voice: asNullableString(data.voice) || (provider === "gemini" ? "Puck" : fallback.voice),
       voice_language: asNullableString(data.voice_language)
     }
   } catch (e) {
@@ -222,6 +261,7 @@ function setupSummary() {
 function settingsHint(state) {
   if (!state) return "Add an API key in Settings."
   if (!state.has_key) {
+    if (state.provider === "gemini") return "Add a Gemini API key to talk (free at aistudio.google.com)."
     return state.provider === "grok"
       ? "Add an xAI API key to talk."
       : "Add an OpenAI API key to talk."
@@ -296,6 +336,11 @@ if (typeof module !== "undefined") {
     isWorking: isWorking,
     realtimeModelOptions: realtimeModelOptions,
     realtimeModelValue: realtimeModelValue,
+    voiceOptions: voiceOptions,
+    voiceValue: voiceValue,
+    GEMINI_MODELS: GEMINI_MODELS,
+    GEMINI_VOICES: GEMINI_VOICES,
+    OPENAI_VOICES: OPENAI_VOICES,
     progressModeOptions: progressModeOptions,
     progressModeValue: progressModeValue,
     sessionCostLabel: sessionCostLabel

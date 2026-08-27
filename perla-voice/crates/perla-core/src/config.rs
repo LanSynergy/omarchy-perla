@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderKind {
     OpenAi,
     Grok,
+    Gemini,
 }
 
 impl ProviderKind {
@@ -18,6 +19,7 @@ impl ProviderKind {
         match self {
             ProviderKind::OpenAi => "openai",
             ProviderKind::Grok => "grok",
+            ProviderKind::Gemini => "gemini",
         }
     }
 
@@ -25,6 +27,7 @@ impl ProviderKind {
         match s.trim().to_ascii_lowercase().as_str() {
             "openai" | "open_ai" | "open-ai" => Some(Self::OpenAi),
             "grok" | "xai" | "x-ai" => Some(Self::Grok),
+            "gemini" | "google" | "google-ai" | "google_ai" => Some(Self::Gemini),
             _ => None,
         }
     }
@@ -116,6 +119,7 @@ pub struct Config {
     pub provider: ProviderKind,
     pub openai: ProviderConfig,
     pub grok: ProviderConfig,
+    pub gemini: ProviderConfig,
 
     /// Voice preset name (provider-specific, e.g. "marin" for OpenAI).
     pub voice: String,
@@ -190,6 +194,7 @@ impl Default for Config {
             provider: ProviderKind::OpenAi,
             openai: ProviderConfig::default(),
             grok: ProviderConfig::default(),
+            gemini: ProviderConfig::default(),
             voice: "marin".into(),
             voice_language: None,
             mode: "hands".into(),
@@ -257,6 +262,11 @@ impl Config {
                 .or_else(|_| std::env::var("XAI_API_KEY"))
                 .ok();
         }
+        if self.gemini.api_key.is_none() {
+            self.gemini.api_key = std::env::var("PERLA_GEMINI_API_KEY")
+                .or_else(|_| std::env::var("GEMINI_API_KEY"))
+                .ok();
+        }
         if let Ok(ws) = std::env::var("PERLA_WORKSPACE") {
             self.workspace = PathBuf::from(ws);
         }
@@ -286,6 +296,11 @@ impl Config {
                 &self.grok,
                 "wss://api.x.ai/v1/realtime",
                 "grok-4-fast-realtime",
+            ),
+            ProviderKind::Gemini => (
+                &self.gemini,
+                "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+                "models/gemini-2.0-flash-exp",
             ),
         };
         ResolvedProvider {
@@ -334,6 +349,7 @@ pub struct PublicSettings {
     pub progress_mode: String,
     pub has_openai_key: bool,
     pub has_grok_key: bool,
+    pub has_gemini_key: bool,
     pub has_key: bool,
     pub start_muted: bool,
     pub voice: String,
@@ -356,9 +372,16 @@ impl PublicSettings {
             .as_deref()
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false);
+        let has_gemini_key = config
+            .gemini
+            .api_key
+            .as_deref()
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
         let has_key = match config.provider {
             ProviderKind::OpenAi => has_openai_key,
             ProviderKind::Grok => has_grok_key,
+            ProviderKind::Gemini => has_gemini_key,
         };
         Self {
             provider: config.provider.label().into(),
@@ -373,6 +396,7 @@ impl PublicSettings {
             .into(),
             has_openai_key,
             has_grok_key,
+            has_gemini_key,
             has_key,
             start_muted: config.start_muted,
             voice: config.voice.clone(),
@@ -391,6 +415,7 @@ pub struct SettingsPatch {
     pub progress_mode: Option<String>,
     pub openai_key: Option<String>,
     pub grok_key: Option<String>,
+    pub gemini_key: Option<String>,
     pub start_muted: Option<bool>,
     pub voice: Option<String>,
     /// "en" / "ar" / … to pin the reply language; "auto" or "" clears the pin.
@@ -412,7 +437,7 @@ pub fn apply_settings_patch(path: &Path, patch: &SettingsPatch) -> Result<Public
 
     if let Some(provider) = patch.provider.as_deref() {
         let kind = ProviderKind::parse_label(provider)
-            .ok_or_else(|| anyhow::anyhow!("provider must be openai or grok"))?;
+            .ok_or_else(|| anyhow::anyhow!("provider must be openai, grok, or gemini"))?;
         table.insert("provider".into(), toml::Value::String(kind.label().into()));
     }
     if let Some(model) = patch.model.as_deref() {
@@ -485,6 +510,12 @@ pub fn apply_settings_patch(path: &Path, patch: &SettingsPatch) -> Result<Public
             ensure_table(table, "grok").insert("api_key".into(), toml::Value::String(key.into()));
         }
     }
+    if let Some(key) = patch.gemini_key.as_deref() {
+        let key = key.trim();
+        if !key.is_empty() {
+            ensure_table(table, "gemini").insert("api_key".into(), toml::Value::String(key.into()));
+        }
+    }
 
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         crate::safeio::ensure_private_dir(parent)?;
@@ -541,6 +572,33 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("xai-test"));
         assert!(text.contains("start_muted = true"));
+    }
+
+    #[test]
+    fn patch_writes_gemini_provider_and_key() {
+        let dir = std::env::temp_dir().join(format!("perla-cfg-gemini-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("config.toml");
+        let _ = std::fs::remove_file(&path);
+
+        let public = apply_settings_patch(
+            &path,
+            &SettingsPatch {
+                provider: Some("gemini".into()),
+                gemini_key: Some("gemini-test-key".into()),
+                start_muted: Some(false),
+                ..SettingsPatch::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(public.provider, "gemini");
+        assert!(public.has_gemini_key);
+        assert!(public.has_key);
+        assert!(!public.start_muted);
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("gemini-test-key"));
+        assert!(text.contains("provider = \"gemini\""));
     }
 
     #[test]

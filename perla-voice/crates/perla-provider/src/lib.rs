@@ -12,6 +12,7 @@
 //! belong in this crate and nowhere else.
 
 pub mod events;
+pub mod gemini;
 
 use anyhow::{anyhow, Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -21,11 +22,12 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
 
-/// Which dialect quirks to apply. Today both use the OpenAI shapes.
+/// Which dialect quirks to apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
     OpenAi,
     Grok,
+    Gemini,
 }
 
 #[derive(Debug, Clone)]
@@ -72,9 +74,13 @@ impl Connection {
 }
 
 pub async fn connect(settings: &ProviderSettings) -> Result<Connection> {
+    if settings.dialect == Dialect::Gemini {
+        return gemini::connect_gemini(settings).await;
+    }
+
     if settings.api_key.is_empty() {
         return Err(anyhow!(
-            "no API key configured for {:?} (set PERLA_OPENAI_API_KEY / PERLA_XAI_API_KEY or the config file)",
+            "no API key configured for {:?} (set PERLA_OPENAI_API_KEY / PERLA_XAI_API_KEY / PERLA_GEMINI_API_KEY or the config file)",
             settings.dialect
         ));
     }

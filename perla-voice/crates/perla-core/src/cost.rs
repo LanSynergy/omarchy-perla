@@ -45,7 +45,7 @@ impl TokenPrices {
                 image_cached_in_per_m: 0.50,
             },
             // No published realtime pricing — report 0 rather than guess.
-            ProviderKind::Grok => Self {
+            ProviderKind::Grok | ProviderKind::Gemini => Self {
                 audio_in_per_m: 0.0,
                 audio_cached_in_per_m: 0.0,
                 audio_out_per_m: 0.0,
