@@ -145,6 +145,7 @@ pub fn translate_outbound(event: Value, default_model: &str) -> Option<Value> {
                                 {
                                     "id": call_id,
                                     "response": {
+                                        "result": response_obj.clone(),
                                         "output": response_obj
                                     }
                                 }
@@ -226,6 +227,28 @@ pub fn translate_inbound(msg: Value) -> Vec<Value> {
             events.push(json!({
                 "type": "input_audio_buffer.speech_started"
             }));
+        }
+
+        if let Some(in_trans) = server_content.get("inputTranscription").or_else(|| server_content.get("interimInputTranscription")) {
+            if let Some(text) = in_trans.get("text").and_then(Value::as_str) {
+                if !text.is_empty() {
+                    events.push(json!({
+                        "type": "conversation.item.input_audio_transcription.completed",
+                        "transcript": text
+                    }));
+                }
+            }
+        }
+
+        if let Some(out_trans) = server_content.get("outputTranscription") {
+            if let Some(text) = out_trans.get("text").and_then(Value::as_str) {
+                if !text.is_empty() {
+                    events.push(json!({
+                        "type": "response.audio_transcript.done",
+                        "transcript": text
+                    }));
+                }
+            }
         }
 
         if let Some(model_turn) = server_content.get("modelTurn") {
@@ -367,19 +390,44 @@ pub async fn connect_gemini(settings: &ProviderSettings) -> Result<Connection> {
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
     let (in_tx, in_rx) = mpsc::unbounded_channel::<Value>();
     let (close_tx, mut close_rx) = tokio::sync::watch::channel(false);
+    let (setup_ready_tx, mut setup_ready_rx) = tokio::sync::watch::channel(false);
 
     let model = settings.model.clone();
 
     // Outbound task: translate engine events -> Gemini Bidi frames
     tokio::spawn(async move {
+        let mut setup_sent = false;
+        let mut buffer = Vec::new();
+
         loop {
             tokio::select! {
                 maybe = out_rx.recv() => {
                     let Some(event) = maybe else { break };
+                    let is_setup = event.get("type").and_then(Value::as_str) == Some("session.update");
                     if let Some(gemini_msg) = translate_outbound(event, &model) {
-                        let Ok(text) = serde_json::to_string(&gemini_msg) else { continue };
-                        if sink.send(Message::Text(text.into())).await.is_err() {
-                            break;
+                        if is_setup {
+                            let Ok(text) = serde_json::to_string(&gemini_msg) else { continue };
+                            if sink.send(Message::Text(text.into())).await.is_err() {
+                                break;
+                            }
+                            setup_sent = true;
+                        } else if !setup_sent || !*setup_ready_rx.borrow() {
+                            buffer.push(gemini_msg);
+                        } else {
+                            let Ok(text) = serde_json::to_string(&gemini_msg) else { continue };
+                            if sink.send(Message::Text(text.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ = setup_ready_rx.changed() => {
+                    if *setup_ready_rx.borrow() {
+                        for msg in buffer.drain(..) {
+                            let Ok(text) = serde_json::to_string(&msg) else { continue };
+                            if sink.send(Message::Text(text.into())).await.is_err() {
+                                break;
+                            }
                         }
                     }
                 }
@@ -399,6 +447,9 @@ pub async fn connect_gemini(settings: &ProviderSettings) -> Result<Connection> {
             match frame {
                 Ok(Message::Text(text)) => match serde_json::from_str::<Value>(&text) {
                     Ok(v) => {
+                        if v.get("setupComplete").is_some() {
+                            let _ = setup_ready_tx.send(true);
+                        }
                         let events = translate_inbound(v);
                         for event in events {
                             if in_tx.send(event).is_err() {
@@ -576,6 +627,9 @@ mod tests {
     fn test_translate_inbound_audio_and_transcript() {
         let msg = json!({
             "serverContent": {
+                "outputTranscription": {
+                    "text": "Hello world"
+                },
                 "modelTurn": {
                     "parts": [
                         {
@@ -583,9 +637,6 @@ mod tests {
                                 "mimeType": "audio/pcm;rate=24000",
                                 "data": "pcm_data_here"
                             }
-                        },
-                        {
-                            "text": "Hello world"
                         }
                     ]
                 }
@@ -593,10 +644,10 @@ mod tests {
         });
         let events = translate_inbound(msg);
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0]["type"], "response.output_audio.delta");
-        assert_eq!(events[0]["delta"], "pcm_data_here");
-        assert_eq!(events[1]["type"], "response.audio_transcript.done");
-        assert_eq!(events[1]["transcript"], "Hello world");
+        assert_eq!(events[0]["type"], "response.audio_transcript.done");
+        assert_eq!(events[0]["transcript"], "Hello world");
+        assert_eq!(events[1]["type"], "response.output_audio.delta");
+        assert_eq!(events[1]["delta"], "pcm_data_here");
     }
 
     #[test]
