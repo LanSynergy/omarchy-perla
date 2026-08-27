@@ -35,6 +35,28 @@ pub fn resolve_gemini_model(model: &str) -> String {
         format!("models/{trimmed}")
     }
 }
+/// Recursively clean JSON Schema for Gemini functionDeclarations (strip unsupported keywords like additionalProperties, $schema, title).
+pub fn clean_gemini_schema(val: &Value) -> Value {
+    match val {
+        Value::Object(map) => {
+            let mut cleaned = serde_json::Map::new();
+            for (k, v) in map {
+                if k == "additionalProperties"
+                    || k == "$schema"
+                    || k == "title"
+                    || k == "$defs"
+                    || k == "definitions"
+                {
+                    continue;
+                }
+                cleaned.insert(k.clone(), clean_gemini_schema(v));
+            }
+            Value::Object(cleaned)
+        }
+        Value::Array(arr) => Value::Array(arr.iter().map(clean_gemini_schema).collect()),
+        other => other.clone(),
+    }
+}
 
 /// Translate an engine event into a Gemini BidiGenerateContent client message.
 pub fn translate_outbound(event: Value, default_model: &str) -> Option<Value> {
@@ -76,7 +98,7 @@ pub fn translate_outbound(event: Value, default_model: &str) -> Option<Value> {
                             Some(json!({
                                 "name": name,
                                 "description": desc,
-                                "parameters": params,
+                                "parameters": clean_gemini_schema(&params),
                             }))
                         })
                         .collect()
@@ -407,6 +429,7 @@ pub async fn connect_gemini(settings: &ProviderSettings) -> Result<Connection> {
                     if let Some(gemini_msg) = translate_outbound(event, &model) {
                         if is_setup {
                             let Ok(text) = serde_json::to_string(&gemini_msg) else { continue };
+                            tracing::info!(setup = %text, "sending gemini setup");
                             if sink.send(Message::Text(text.into())).await.is_err() {
                                 break;
                             }
@@ -445,25 +468,37 @@ pub async fn connect_gemini(settings: &ProviderSettings) -> Result<Connection> {
     tokio::spawn(async move {
         while let Some(frame) = stream.next().await {
             match frame {
-                Ok(Message::Text(text)) => match serde_json::from_str::<Value>(&text) {
-                    Ok(v) => {
-                        if v.get("setupComplete").is_some() {
-                            let _ = setup_ready_tx.send(true);
-                        }
-                        let events = translate_inbound(v);
-                        for event in events {
-                            if in_tx.send(event).is_err() {
-                                return;
+                Ok(Message::Text(text)) => {
+                    tracing::info!(inbound = %text, "gemini text frame");
+                    match serde_json::from_str::<Value>(&text) {
+                        Ok(v) => {
+                            if v.get("setupComplete").is_some() {
+                                let _ = setup_ready_tx.send(true);
+                            }
+                            let events = translate_inbound(v);
+                            for event in events {
+                                if in_tx.send(event).is_err() {
+                                    return;
+                                }
                             }
                         }
+                        Err(e) => warn!("unparseable gemini realtime event: {e}"),
                     }
-                    Err(e) => warn!("unparseable gemini realtime event: {e}"),
-                },
-                Ok(Message::Close(_)) | Err(_) => break,
-                Ok(_) => {}
+                }
+                Ok(Message::Close(c)) => {
+                    tracing::warn!(close_frame = ?c, "gemini server sent close frame");
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "gemini stream error");
+                    break;
+                }
+                Ok(other) => {
+                    tracing::debug!(?other, "gemini other frame");
+                }
             }
         }
-        debug!("gemini realtime websocket reader ended");
+        tracing::warn!("gemini realtime websocket reader ended");
     });
 
     Ok(Connection {

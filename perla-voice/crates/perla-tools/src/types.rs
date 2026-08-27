@@ -24,8 +24,30 @@ impl ToolDef {
         json!({
             "name": self.name,
             "description": self.description,
-            "parameters": self.parameters,
+            "parameters": clean_schema(&self.parameters),
         })
+    }
+}
+
+fn clean_schema(val: &Value) -> Value {
+    match val {
+        Value::Object(map) => {
+            let mut cleaned = Map::new();
+            for (k, v) in map {
+                if k == "additionalProperties"
+                    || k == "$schema"
+                    || k == "title"
+                    || k == "$defs"
+                    || k == "definitions"
+                {
+                    continue;
+                }
+                cleaned.insert(k.clone(), clean_schema(v));
+            }
+            Value::Object(cleaned)
+        }
+        Value::Array(arr) => Value::Array(arr.iter().map(clean_schema).collect()),
+        other => other.clone(),
     }
 }
 
