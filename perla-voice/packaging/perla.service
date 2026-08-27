@@ -6,6 +6,10 @@ After=graphical-session.target
 
 [Service]
 Type=simple
+# systemd --user does not inherit your shell exports, so an OPENAI_API_KEY in
+# ~/.bashrc never reaches the daemon. This optional file is the way in; the
+# leading "-" keeps the service starting when it is absent.
+EnvironmentFile=-%h/.config/perla-voice/env
 ExecStart=%h/.local/bin/perla-d serve
 Restart=on-failure
 RestartSec=2

@@ -40,6 +40,10 @@ Panel {
 
   function open() {
     if (root.perla) root.perla.probeInstall()
+    // The key field lives below the fold. Nagging "add an API key" in the
+    // compact view while hiding the field behind a right-click is a puzzle,
+    // so a keyless install opens straight to where the field is.
+    if (root.perla && root.perla.installed && !root.perla.has_key) root.compact = false
     root.controller.show()
     Qt.callLater(function() {
       if (root.opened) setCenterHoverRevealSuppressed(true)

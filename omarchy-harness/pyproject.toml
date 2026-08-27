@@ -1,6 +1,6 @@
 [project]
 name = "omarchy-harness"
-version = "0.1.2"
+version = "0.1.3"
 description = "Thin Hyprland/Omarchy computer-use harness: see, key, type, click, ax, script."
 readme = "README.md"
 requires-python = ">=3.11"

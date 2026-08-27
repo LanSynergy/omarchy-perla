@@ -16,16 +16,18 @@ ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
 ASSUME_YES=false
 WITH_COMPUTER_USE=false
 FROM_SOURCE=false
+IMPORT_ENV_KEY=false
 
 for arg in "$@"; do
   case "$arg" in
   --yes | -y) ASSUME_YES=true ;;
   --with-computer-use) WITH_COMPUTER_USE=true ;;
   --from-source) FROM_SOURCE=true ;;
+  --import-env-key) IMPORT_ENV_KEY=true ;;
   --help | -h)
     sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     echo
-    echo "Usage: perla-setup [--yes] [--with-computer-use] [--from-source]"
+    echo "Usage: perla-setup [--yes] [--with-computer-use] [--from-source] [--import-env-key]"
     exit 0
     ;;
   *)
@@ -126,7 +128,8 @@ else
 fi
 echo
 echo "  ${DIM}Nothing outside your home directory changes except those packages.${RESET}"
-echo "  ${DIM}No API key is installed — you paste your own into the panel afterwards.${RESET}"
+echo "  ${DIM}No API key is bundled. If your shell already exports one it can offer${RESET}"
+echo "  ${DIM}to copy it over; otherwise you paste your own into the panel.${RESET}"
 echo
 
 if [ "$ASSUME_YES" != true ]; then
@@ -214,6 +217,46 @@ if [ "$WITH_COMPUTER_USE" = true ]; then
   info "omarchy-harness can see the screen, click, and type as you"
 fi
 
+# Existing key ---------------------------------------------------------------
+# The one step nobody enjoys is pasting an API key. If the shell already has
+# one, offer to hand it to the daemon — but never silently: a key landing in a
+# new file is exactly the kind of thing you want to have said yes to.
+
+ENV_FILE="$HOME/.config/perla-voice/env"
+
+found_env_key() {
+  [ -n "${PERLA_OPENAI_API_KEY:-}${OPENAI_API_KEY:-}${PERLA_XAI_API_KEY:-}${XAI_API_KEY:-}" ]
+}
+
+if found_env_key; then
+  import_it=false
+  if [ "$IMPORT_ENV_KEY" = true ]; then
+    import_it=true
+  elif [ "$ASSUME_YES" != true ]; then
+    echo
+    step "Found an API key in your environment"
+    info "systemd --user does not inherit your shell exports, so the daemon"
+    info "cannot see it unless it is copied to $ENV_FILE (mode 0600)."
+    read -r -p "    Copy it there? [y/N] " reply
+    case "$reply" in y | Y | yes | YES) import_it=true ;; esac
+  fi
+
+  if [ "$import_it" = true ]; then
+    umask 077
+    : >"$ENV_FILE"
+    for var in PERLA_OPENAI_API_KEY OPENAI_API_KEY PERLA_XAI_API_KEY XAI_API_KEY; do
+      value="${!var:-}"
+      [ -n "$value" ] && printf '%s=%s\n' "$var" "$value" >>"$ENV_FILE"
+    done
+    chmod 600 "$ENV_FILE"
+    systemctl --user restart perla.service
+    info "copied to $ENV_FILE — no key to paste in the panel"
+  elif [ "$ASSUME_YES" = true ]; then
+    warn "your shell has an API key, but the daemon cannot see it"
+    info "re-run with --import-env-key to copy it to $ENV_FILE"
+  fi
+fi
+
 # PATH -----------------------------------------------------------------------
 
 case ":$PATH:" in
@@ -228,8 +271,12 @@ esac
 echo
 echo "${GREEN}${BOLD}Perla is installed.${RESET}"
 echo
-echo "  Click the pearl in your bar, paste your own OpenAI or xAI API key,"
-echo "  and press Save. Then say something."
+if [ -s "$ENV_FILE" ]; then
+  echo "  Click the pearl in your bar and say something — your key is already in."
+else
+  echo "  Click the pearl in your bar, paste your own OpenAI or xAI API key,"
+  echo "  and press Save. Then say something."
+fi
 echo
 echo "  ${DIM}Remove it again with: $ROOT/bin/perla-uninstall${RESET}"
 echo
