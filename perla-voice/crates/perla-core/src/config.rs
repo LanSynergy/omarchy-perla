@@ -300,7 +300,7 @@ impl Config {
             ProviderKind::Gemini => (
                 &self.gemini,
                 "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
-                "models/gemini-2.0-flash-exp",
+                "models/gemini-2.5-flash-native-audio-latest",
             ),
         };
         ResolvedProvider {

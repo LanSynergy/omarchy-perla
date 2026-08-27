@@ -44,13 +44,13 @@ const geminiKeyed = Model.parseState(JSON.stringify({
   has_key: true
 }))
 assert.strictEqual(geminiKeyed.provider, "gemini")
-assert.strictEqual(geminiKeyed.model, "models/gemini-2.0-flash-exp")
+assert.strictEqual(geminiKeyed.model, "models/gemini-2.5-flash-native-audio-latest")
 assert.strictEqual(geminiKeyed.has_gemini_key, true)
 assert.strictEqual(geminiKeyed.voice, "Puck")
 assert.strictEqual(Model.voiceValue(geminiKeyed), "Puck")
 assert.strictEqual(Model.settingsHint(geminiKeyed), "")
 assert.ok(Model.realtimeModelOptions(geminiKeyed).some(function(opt) {
-  return opt.value === "models/gemini-2.0-flash-exp"
+  return opt.value === "models/gemini-2.5-flash-native-audio-latest"
 }))
 assert.ok(Model.voiceOptions(geminiKeyed).some(function(opt) {
   return opt.value === "Puck"

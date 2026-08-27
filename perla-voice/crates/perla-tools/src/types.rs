@@ -44,6 +44,37 @@ fn clean_schema(val: &Value) -> Value {
                 }
                 cleaned.insert(k.clone(), clean_schema(v));
             }
+
+            if cleaned.get("type").and_then(Value::as_str) == Some("object") {
+                if !cleaned.contains_key("properties") {
+                    cleaned.insert("properties".into(), json!({}));
+                }
+            }
+
+            if let Some(req_arr) = cleaned.get("required").and_then(Value::as_array) {
+                let valid_props: Vec<String> = cleaned
+                    .get("properties")
+                    .and_then(Value::as_object)
+                    .map(|p| p.keys().cloned().collect())
+                    .unwrap_or_default();
+
+                let filtered_req: Vec<Value> = req_arr
+                    .iter()
+                    .filter(|item| {
+                        item.as_str()
+                            .map(|s| valid_props.contains(&s.to_string()))
+                            .unwrap_or(false)
+                    })
+                    .cloned()
+                    .collect();
+
+                if filtered_req.is_empty() {
+                    cleaned.remove("required");
+                } else {
+                    cleaned.insert("required".into(), Value::Array(filtered_req));
+                }
+            }
+
             Value::Object(cleaned)
         }
         Value::Array(arr) => Value::Array(arr.iter().map(clean_schema).collect()),

@@ -56,8 +56,8 @@ var GROK_MODELS = [
 ]
 
 var GEMINI_MODELS = [
-  { value: "models/gemini-2.0-flash-exp", label: "Gemini 2.0 Flash (Free)" },
-  { value: "models/gemini-2.0-flash", label: "Gemini 2.0 Flash GA (Free)" }
+  { value: "models/gemini-2.5-flash-native-audio-latest", label: "Gemini 2.5 Flash (Free)" },
+  { value: "models/gemini-2.5-flash-native-audio-preview-12-2025", label: "Gemini 2.5 Preview (Free)" }
 ]
 
 var GEMINI_VOICES = [
@@ -100,7 +100,7 @@ function realtimeModelOptions(perla) {
 
 function realtimeModelValue(perla) {
   if (perla && perla.model) return String(perla.model)
-  if (perla && perla.provider === "gemini") return "models/gemini-2.0-flash-exp"
+  if (perla && perla.provider === "gemini") return "models/gemini-2.5-flash-native-audio-latest"
   return perla && perla.provider === "grok"
     ? "grok-4-fast-realtime"
     : "gpt-realtime-2.1-mini"
@@ -196,7 +196,7 @@ function parseState(jsonText) {
       pid: Math.max(0, asInt(data.pid, fallback.pid)),
       provider: provider,
       model: asNullableString(data.model) || (provider === "gemini"
-        ? "models/gemini-2.0-flash-exp"
+        ? "models/gemini-2.5-flash-native-audio-latest"
         : (provider === "grok" ? "grok-4-fast-realtime" : fallback.model)),
       progress_mode: oneOf(data.progress_mode, ["off", "big", "steps"], fallback.progress_mode),
       has_openai_key: data.has_openai_key === true,
