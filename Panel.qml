@@ -29,11 +29,17 @@ Panel {
     ? (perla.held_updates + (perla.held_updates === 1 ? " update waiting" : " updates waiting"))
     : ""
   readonly property string keyHint: Model.settingsHint(perla)
+  // Until the daemon exists the rest of the panel has nothing to control, so
+  // the setup card replaces it rather than sitting above a wall of dead buttons.
+  readonly property bool setupNeeded: Model.needsSetup(perla)
+  property bool setupComputerUse: false
+  property bool setupLaunched: false
   readonly property bool settingsEditing: openaiKey.activeFocus || grokKey.activeFocus
     || sendField.activeFocus || providerBox.popupOpen || modelBox.popupOpen
     || progressBox.popupOpen || languageBox.popupOpen
 
   function open() {
+    if (root.perla) root.perla.probeInstall()
     root.controller.show()
     Qt.callLater(function() {
       if (root.opened) setCenterHoverRevealSuppressed(true)
@@ -139,8 +145,74 @@ Panel {
             }
           }
 
+          Column {
+            visible: root.setupNeeded
+            width: parent.width
+            spacing: Style.space(10)
+
+            Text {
+              width: parent.width
+              text: "Adding a plugin copies files and runs nothing — that is Omarchy keeping you safe. Perla also needs a voice daemon, so one more step installs it."
+              color: root.contentForeground
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(2)
+
+              Repeater {
+                model: Model.setupSummary()
+
+                Text {
+                  width: parent.width
+                  text: "\u00b7  " + modelData
+                  color: root.dim
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
+                }
+              }
+            }
+
+            Toggle {
+              width: parent.width
+              label: "Computer use"
+              description: "Also let Perla see the screen, click, and type"
+              checked: root.setupComputerUse
+              foreground: root.contentForeground
+              fontFamily: root.contentFontFamily
+              onClicked: root.setupComputerUse = !root.setupComputerUse
+            }
+
+            Button {
+              text: root.setupLaunched ? "Setup is running…" : "Set up Perla"
+              foreground: root.contentForeground
+              fontFamily: root.contentFontFamily
+              enabled: !!root.perla
+              opacity: enabled ? 1.0 : 0.4
+              onClicked: {
+                if (!root.perla) return
+                root.perla.runSetup(root.setupComputerUse)
+                root.setupLaunched = true
+              }
+            }
+
+            Text {
+              visible: root.setupLaunched
+              width: parent.width
+              text: "A terminal opened so you can watch it. Perla wakes up here on her own when it finishes."
+              color: root.dim
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+          }
+
           Text {
-            visible: root.transcriptText !== ""
+            visible: !root.setupNeeded && root.transcriptText !== ""
             width: parent.width
             text: root.transcriptText
             color: root.contentForeground
@@ -150,7 +222,7 @@ Panel {
           }
 
           Text {
-            visible: root.activityText !== ""
+            visible: !root.setupNeeded && root.activityText !== ""
             width: parent.width
             text: root.activityText
             color: root.dim
@@ -160,7 +232,7 @@ Panel {
           }
 
           Text {
-            visible: root.costText !== "" || root.heldText !== ""
+            visible: !root.setupNeeded && (root.costText !== "" || root.heldText !== "")
             width: parent.width
             text: root.heldText !== "" && root.costText !== ""
               ? root.heldText + " · " + root.costText
@@ -171,6 +243,7 @@ Panel {
           }
 
           Row {
+            visible: !root.setupNeeded
             spacing: Style.space(6)
 
             Button {
@@ -202,7 +275,7 @@ Panel {
           }
 
           Button {
-            visible: root.compact
+            visible: !root.setupNeeded && root.compact
             text: "Settings…"
             foreground: root.contentForeground
             fontFamily: root.contentFontFamily
@@ -210,7 +283,7 @@ Panel {
           }
 
           Row {
-            visible: !root.compact
+            visible: !root.setupNeeded && !root.compact
             width: parent.width
             spacing: Style.space(6)
 
@@ -237,7 +310,7 @@ Panel {
 
           Column {
             // Everything below the fold: only the full panel shows it.
-            visible: !root.compact
+            visible: !root.setupNeeded && !root.compact
             width: parent.width
             spacing: Style.space(12)
 
@@ -407,6 +480,15 @@ Panel {
                 foreground: root.contentForeground
                 Keys.onEscapePressed: root.close()
               }
+            }
+
+            Button {
+              // The mirror of the setup button: same script directory, same
+              // visible terminal, nothing removed without the user watching.
+              text: "Uninstall the daemon\u2026"
+              foreground: root.contentForeground
+              fontFamily: root.contentFontFamily
+              onClicked: if (root.perla) root.perla.runUninstall()
             }
 
             Button {

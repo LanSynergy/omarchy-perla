@@ -49,4 +49,31 @@ assert.ok(Model.realtimeModelOptions(modelState).some(function(option) {
 
 const customModel = Model.parseState(JSON.stringify({ model: "gpt-realtime-private" }))
 assert.strictEqual(Model.realtimeModelOptions(customModel)[0].value, "gpt-realtime-private")
+// Setup gating: silence until the probe has answered, so an already-installed
+// user never sees the setup card flash on shell start.
+const unprobed = Model.parseState("{}")
+assert.strictEqual(Model.needsSetup(unprobed), false)
+assert.strictEqual(Model.needsSetup(null), false)
+
+const probedMissing = Model.parseState("{}")
+probedMissing.installProbed = true
+probedMissing.installed = false
+assert.strictEqual(Model.needsSetup(probedMissing), true)
+assert.strictEqual(Model.statusLabel(probedMissing), "Setup needed")
+
+const probedPresent = Model.parseState("{}")
+probedPresent.installProbed = true
+probedPresent.installed = true
+assert.strictEqual(Model.needsSetup(probedPresent), false)
+assert.ok(Model.statusLabel(probedPresent).indexOf("Setup") < 0)
+
+// "Setup needed" outranks the key hint: a key is useless with no daemon.
+const drivingButMissing = Model.parseState(JSON.stringify({ status: "connected", driving: true }))
+drivingButMissing.installProbed = true
+drivingButMissing.installed = false
+assert.strictEqual(Model.statusLabel(drivingButMissing), "Setup needed")
+
+assert.ok(Model.setupSummary().length >= 3)
+assert.ok(Model.setupSummary().every(function(line) { return typeof line === "string" && line !== "" }))
+
 console.log("ok")

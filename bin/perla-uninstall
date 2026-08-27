@@ -1,0 +1,94 @@
+#!/bin/bash
+# Undo everything perla-setup did.
+#
+# Your API key and local history are kept unless you pass --purge, because
+# losing them to a reinstall would be worse than leaving two small files
+# behind. This does not remove the plugin itself — `omarchy plugin remove
+# nawaf.perla` does that, and it is the last thing printed below.
+
+set -euo pipefail
+
+ASSUME_YES=false
+PURGE=false
+
+for arg in "$@"; do
+  case "$arg" in
+  --yes | -y) ASSUME_YES=true ;;
+  --purge) PURGE=true ;;
+  --help | -h)
+    echo "Usage: perla-uninstall [--yes] [--purge]"
+    echo "  --purge  also delete your API key, config, and local history"
+    exit 0
+    ;;
+  *)
+    echo "perla-uninstall: unknown option '$arg'" >&2
+    exit 2
+    ;;
+  esac
+done
+
+BOLD=$'\033[1m'
+DIM=$'\033[2m'
+GREEN=$'\033[32m'
+RESET=$'\033[0m'
+
+step() { echo "${BOLD}==>${RESET} $*"; }
+
+BINARY="$HOME/.local/bin/perla-d"
+UNIT="$HOME/.config/systemd/user/perla.service"
+
+echo
+echo "${BOLD}Remove Perla${RESET}"
+echo
+echo "  Stops and deletes  $UNIT"
+echo "  Deletes            $BINARY"
+echo "  Uninstalls         the omarchy-harness tool and its skill, if present"
+if [ "$PURGE" = true ]; then
+  echo "  ${BOLD}Also deletes${RESET}       your API key, config, and local history"
+else
+  echo "  Keeps              your API key and history ${DIM}(--purge deletes them too)${RESET}"
+fi
+echo
+
+if [ "$ASSUME_YES" != true ]; then
+  read -r -p "Continue? [y/N] " reply
+  case "$reply" in
+  y | Y | yes | YES) ;;
+  *)
+    echo "Cancelled. Nothing was changed."
+    exit 130
+    ;;
+  esac
+  echo
+fi
+
+step "Stopping the perla user service"
+systemctl --user disable --now perla.service 2>/dev/null || true
+rm -f "$UNIT"
+systemctl --user daemon-reload 2>/dev/null || true
+
+step "Removing the daemon"
+rm -f "$BINARY"
+
+if command -v uv >/dev/null 2>&1; then
+  step "Removing the computer-use harness"
+  uv tool uninstall omarchy-harness 2>/dev/null || true
+fi
+rm -rf "$HOME/.grok/skills/omarchy-harness"
+
+if [ "$PURGE" = true ]; then
+  step "Deleting your key, config, and history"
+  rm -rf "$HOME/.config/perla-voice" "$HOME/.local/state/perla" "$HOME/.local/share/perla"
+fi
+
+echo
+echo "${GREEN}${BOLD}Perla is uninstalled.${RESET}"
+echo
+echo "  The bar plugin is still there. Remove it with:"
+echo "  ${BOLD}omarchy plugin remove nawaf.perla${RESET}"
+echo
+if [ "$PURGE" != true ]; then
+  echo "  ${DIM}Your key and history are still in ~/.config/perla-voice and"
+  echo "  ~/.local/state/perla. Re-run with --purge to delete them.${RESET}"
+  echo
+fi

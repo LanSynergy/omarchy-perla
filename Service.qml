@@ -9,6 +9,23 @@ Item {
   property var shell: null
   property var pluginRegistry: null
 
+  // Where this plugin was cloned to — normally ~/.config/omarchy/plugins/nawaf.perla.
+  // bin/perla-setup lives inside it, so the setup button never fetches anything
+  // the user has not already accepted by adding the plugin.
+  readonly property string pluginDir: String(Qt.resolvedUrl("."))
+    .replace(/^file:\/\//, "")
+    .replace(/\/$/, "")
+
+  // `omarchy plugin add` copies files and runs nothing, so on a fresh install
+  // the daemon is simply absent. Probe for it instead of letting every button
+  // fail silently against a binary that is not there.
+  property bool installProbed: false
+  property string daemonPath: ""
+  readonly property bool installed: daemonPath !== ""
+  // Prefer the absolute path we found: ~/.local/bin is not always on the
+  // PATH that omarchy-shell inherited at login.
+  readonly property string daemonBin: daemonPath !== "" ? daemonPath : "perla-d"
+
   readonly property string runtimeDir: String(Quickshell.env("XDG_RUNTIME_DIR") || "")
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME") || "user"
   readonly property string stateDir: runtimeDir !== "" ? runtimeDir + "/perla" : "/tmp/perla-" + userName
@@ -90,9 +107,40 @@ Item {
   }
 
   function runDaemon(args) {
-    var cmd = ["perla-d"]
+    if (!installed) return
+    var cmd = [daemonBin]
     for (var i = 0; i < args.length; i++) cmd.push(args[i])
     Quickshell.execDetached(cmd)
+  }
+
+  function probeInstall() {
+    if (!probeProcess.running) probeProcess.running = true
+  }
+
+  function applyProbe(raw) {
+    daemonPath = String(raw || "").replace(/^\s+|\s+$/g, "")
+    installProbed = true
+  }
+
+  function shellQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'"
+  }
+
+  // Setup and removal run in a visible terminal rather than silently inside the
+  // shell process: the scripts need sudo for missing packages, and watching the
+  // thing that touches your system is the whole point.
+  function runInTerminal(command) {
+    Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", command])
+  }
+
+  function runSetup(withComputerUse) {
+    var cmd = shellQuote(pluginDir + "/bin/perla-setup") + " --yes"
+    if (withComputerUse === true) cmd += " --with-computer-use"
+    runInTerminal(cmd)
+  }
+
+  function runUninstall() {
+    runInTerminal(shellQuote(pluginDir + "/bin/perla-uninstall"))
   }
 
   function start() { runDaemon(["start"]) }
@@ -108,7 +156,7 @@ Item {
   }
 
   function pumpMessages() {
-    if (messageProcess.running || messageQueue.length === 0) return
+    if (!installed || messageProcess.running || messageQueue.length === 0) return
     pendingMessageBody = messageQueue.shift()
     messageProcess.running = true
   }
@@ -119,7 +167,7 @@ Item {
   }
 
   function pumpSettings() {
-    if (settingsProcess.running || settingsQueue.length === 0) return
+    if (!installed || settingsProcess.running || settingsQueue.length === 0) return
     pendingSettingsBody = settingsQueue.shift()
     settingsProcess.running = true
   }
@@ -160,9 +208,34 @@ Item {
     saveSettings(patch)
   }
 
+  // Answers "is perla-d actually on this machine". ~/.local/bin first, because
+  // that is where setup puts it and it is not always on the shell's PATH.
+  Process {
+    id: probeProcess
+    command: ["sh", "-c",
+      "if [ -x \"$HOME/.local/bin/perla-d\" ]; then printf %s \"$HOME/.local/bin/perla-d\"; else command -v perla-d 2>/dev/null | tr -d '\\n'; fi"]
+    stdout: StdioCollector {
+      onStreamFinished: root.applyProbe(text)
+    }
+    onExited: function(exitCode, exitStatus) {
+      // An empty stream still means "answered": nothing is installed.
+      root.installProbed = true
+    }
+  }
+
+  // Keep asking until it appears, so the panel flips over on its own the moment
+  // the setup terminal finishes. Stops as soon as the answer is yes.
+  Timer {
+    interval: 3000
+    repeat: true
+    running: !root.installed
+    triggeredOnStart: true
+    onTriggered: root.probeInstall()
+  }
+
   Process {
     id: settingsProcess
-    command: ["perla-d", "set-config", "--stdin"]
+    command: [root.daemonBin, "set-config", "--stdin"]
     stdinEnabled: true
 
     onStarted: {
@@ -178,7 +251,7 @@ Item {
 
   Process {
     id: messageProcess
-    command: ["perla-d", "send", "--stdin"]
+    command: [root.daemonBin, "send", "--stdin"]
     stdinEnabled: true
 
     onStarted: {
@@ -233,7 +306,7 @@ Item {
   Timer {
     interval: 2000
     repeat: true
-    running: root.pid <= 0
+    running: root.installed && root.pid <= 0
     triggeredOnStart: true
     onTriggered: {
       stateFile.reload()

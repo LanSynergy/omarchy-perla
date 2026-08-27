@@ -199,6 +199,26 @@ function isWorking(state) {
   return !!(state && state.status === "tool_running")
 }
 
+// `omarchy plugin add` copies files and runs nothing, so the daemon is not
+// there yet the first time the plugin loads. The panel asks the shell whether
+// perla-d exists and reports the answer back through these two properties;
+// until the probe has answered once we say nothing rather than flashing a
+// setup card at someone who is already installed.
+function needsSetup(state) {
+  return !!(state && state.installProbed === true && state.installed !== true)
+}
+
+// What the setup button is about to do, in the panel's own words. Kept here so
+// the disclosure and the script's banner can be checked against each other.
+function setupSummary() {
+  return [
+    "Installs the perla-d daemon into ~/.local/bin",
+    "Enables perla.service for your user",
+    "Installs missing Arch packages — asks for your password",
+    "Opens a terminal so you can watch and cancel"
+  ]
+}
+
 function settingsHint(state) {
   if (!state) return "Add an API key in Settings."
   if (!state.has_key) {
@@ -215,6 +235,7 @@ function maskKeyHint(hasKey) {
 
 function statusLabel(state) {
   if (!state) return "Disconnected"
+  if (needsSetup(state)) return "Setup needed"
   if (state.driving) return "Driving"
   if (state.status === "error") return state.error || "Error"
   if (!state.has_key && (state.status === "disconnected" || state.status === "error"))
@@ -264,6 +285,8 @@ if (typeof module !== "undefined") {
     parseState: parseState,
     parseHarness: parseHarness,
     settingsHint: settingsHint,
+    needsSetup: needsSetup,
+    setupSummary: setupSummary,
     maskKeyHint: maskKeyHint,
     statusLabel: statusLabel,
     orbColorKey: orbColorKey,

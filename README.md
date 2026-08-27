@@ -18,38 +18,42 @@ desktop actions, and spoken results.
 
 ## Install
 
-Perla currently needs a one-time manual setup because it includes a native Rust
-daemon and an optional computer-use harness.
-
 ```sh
-git clone https://github.com/inawafalm/omarchy-perla.git ~/.local/share/perla
-cd ~/.local/share/perla
-
-# Omarchy/Arch dependencies
-omarchy-pkg-add rust alsa-lib pkgconf wlrctl wtype grim python-uv
-
-# Voice daemon
-cargo install --locked --root "$HOME/.local" \
-  --path perla-voice/crates/perla-cli --bin perla-d
-install -Dm644 perla-voice/packaging/perla.service \
-  "$HOME/.config/systemd/user/perla.service"
-systemctl --user daemon-reload
-systemctl --user enable --now perla.service
-
-# Computer-use harness
-uv tool install ./omarchy-harness
-mkdir -p "$HOME/.grok/skills"
-cp -R omarchy-harness/skills/omarchy-harness "$HOME/.grok/skills/"
-
-# Bar plugin
 omarchy plugin add https://github.com/inawafalm/omarchy-perla --enable
 ```
 
-Run `perla-d ping`, then right-click the Perla orb. Choose OpenAI or Grok,
-choose a realtime model, paste your own API key into the password field, and
-save. Perla never ships with a shared API key.
+A pearl appears in your bar. Click it and press **Set up Perla**.
 
-Optional user hotkeys:
+That opens a terminal — you watch every command run and can cancel at any
+point — and it installs the `perla-d` voice daemon into `~/.local/bin`, enables
+`perla.service` for your user, and pulls in any Arch package you are missing.
+A prebuilt daemon is downloaded and checksummed, so this normally takes seconds
+rather than a Rust compile. Flip **Computer use** on first if you also want
+Perla to see the screen, click, and type.
+
+`omarchy plugin add` deliberately copies files and runs nothing — no install
+hooks, no sudo. That is why the last step is a button you press rather than
+something that happens behind your back.
+
+When it finishes, right-click the orb, choose OpenAI or Grok and a realtime
+model, paste your own API key into the password field, and save. Perla never
+ships with a shared API key.
+
+### Without the panel
+
+The same script runs fine on its own — useful over SSH, or if you would rather
+read it before it runs:
+
+```sh
+~/.config/omarchy/plugins/nawaf.perla/bin/perla-setup --help
+~/.config/omarchy/plugins/nawaf.perla/bin/perla-setup
+```
+
+`--with-computer-use` adds the harness, `--from-source` compiles the daemon out
+of the checkout instead of downloading it, and `--yes` skips the confirmation.
+Re-running it is safe; it only installs what is actually missing.
+
+### Optional hotkeys
 
 ```ini
 bind = SUPER ALT, SPACE, exec, perla-d toggle-listen
@@ -91,16 +95,17 @@ session was active, Perla reconnects automatically.
 
 ## Remove
 
+In the panel, right-click the orb and press **Uninstall the daemon…**, or run
+the same script yourself:
+
 ```sh
-omarchy plugin remove nawaf.perla --yes || omarchy plugin remove nawaf.perla
-systemctl --user disable --now perla.service
-rm "$HOME/.config/systemd/user/perla.service"
-systemctl --user daemon-reload
-rm -f "$HOME/.local/bin/perla-d" "$HOME/.local/bin/omarchy-harness"
+~/.config/omarchy/plugins/nawaf.perla/bin/perla-uninstall
+omarchy plugin remove nawaf.perla
 ```
 
-Your key and local history are intentionally kept. To erase them too, remove
-`~/.config/perla-voice`, `~/.local/state/perla`, and `~/.local/share/perla`.
+That stops and deletes the user service, the daemon, and the harness. Your key
+and local history are kept on purpose — add `--purge` to delete
+`~/.config/perla-voice`, `~/.local/state/perla`, and `~/.local/share/perla` too.
 
 ## Development
 

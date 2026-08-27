@@ -1,0 +1,235 @@
+#!/bin/bash
+# Finish installing Perla after `omarchy plugin add`.
+#
+# `omarchy plugin add` clones files and nothing else — it deliberately never
+# runs an install hook and never asks for sudo. Perla needs a compiled daemon
+# and a systemd user service, so that last step lives here, behind a button in
+# the panel or a manual run of this script.
+#
+# Everything it touches is inside your home directory except the Arch packages,
+# and it only reaches for those when one is genuinely missing.
+
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+ASSUME_YES=false
+WITH_COMPUTER_USE=false
+FROM_SOURCE=false
+
+for arg in "$@"; do
+  case "$arg" in
+  --yes | -y) ASSUME_YES=true ;;
+  --with-computer-use) WITH_COMPUTER_USE=true ;;
+  --from-source) FROM_SOURCE=true ;;
+  --help | -h)
+    sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    echo
+    echo "Usage: perla-setup [--yes] [--with-computer-use] [--from-source]"
+    exit 0
+    ;;
+  *)
+    echo "perla-setup: unknown option '$arg'" >&2
+    exit 2
+    ;;
+  esac
+done
+
+BOLD=$'\033[1m'
+DIM=$'\033[2m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+YELLOW=$'\033[33m'
+RESET=$'\033[0m'
+
+step() { echo "${BOLD}==>${RESET} $*"; }
+info() { echo "    ${DIM}$*${RESET}"; }
+warn() { echo "    ${YELLOW}!${RESET} $*"; }
+die() {
+  echo "${RED}perla-setup: $*${RESET}" >&2
+  exit 1
+}
+
+PREFIX="$HOME/.local"
+BIN_DIR="$PREFIX/bin"
+UNIT_DIR="$HOME/.config/systemd/user"
+BINARY="$BIN_DIR/perla-d"
+TARGET="x86_64-unknown-linux-gnu"
+
+[ -f "$ROOT/perla-voice/Cargo.toml" ] || die "expected perla-voice/ next to bin/ — run this from the plugin checkout"
+
+VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/manifest.json" | head -n1)"
+[ -n "$VERSION" ] || die "could not read the version out of manifest.json"
+
+case "$(uname -m)" in
+x86_64) ;;
+*)
+  warn "no prebuilt daemon for $(uname -m) — building from source"
+  FROM_SOURCE=true
+  ;;
+esac
+
+# Packages -------------------------------------------------------------------
+# Only ever ask for what is actually absent, so a well-provisioned Omarchy box
+# never sees a sudo prompt at all.
+
+missing_packages() {
+  local pkg
+  for pkg in "$@"; do
+    pacman -Q "$pkg" >/dev/null 2>&1 || printf '%s\n' "$pkg"
+  done
+}
+
+install_packages() {
+  local -a wanted=("$@") missing=()
+  local pkg
+  while IFS= read -r pkg; do
+    [ -n "$pkg" ] && missing+=("$pkg")
+  done < <(missing_packages "${wanted[@]}")
+
+  if [ ${#missing[@]} -eq 0 ]; then
+    info "already installed: ${wanted[*]}"
+    return 0
+  fi
+
+  step "Installing ${missing[*]} ${DIM}(needs your password)${RESET}"
+  if command -v omarchy-pkg-add >/dev/null 2>&1; then
+    omarchy-pkg-add "${missing[@]}"
+  else
+    sudo pacman -S --noconfirm --needed "${missing[@]}"
+  fi
+}
+
+# What is about to happen ----------------------------------------------------
+
+RUNTIME_PACKAGES=(alsa-lib)
+BUILD_PACKAGES=(rust pkgconf)
+HARNESS_PACKAGES=(python-uv wlrctl wtype grim)
+
+echo
+echo "${BOLD}Perla setup${RESET} ${DIM}v$VERSION${RESET}"
+echo
+echo "  Plugin       $ROOT"
+if [ "$FROM_SOURCE" = true ]; then
+  echo "  Daemon       compile perla-d from the source in this checkout"
+else
+  echo "  Daemon       download the signed-checksum perla-d v$VERSION release,"
+  echo "               falling back to compiling the source in this checkout"
+fi
+echo "  Installs to  $BINARY"
+echo "  Service      $UNIT_DIR/perla.service, enabled for your user"
+echo "  Packages     only the missing ones, via pacman (asks for your password)"
+if [ "$WITH_COMPUTER_USE" = true ]; then
+  echo "  Computer use omarchy-harness + ${HARNESS_PACKAGES[*]}"
+else
+  echo "  Computer use skipped ${DIM}(--with-computer-use to include it)${RESET}"
+fi
+echo
+echo "  ${DIM}Nothing outside your home directory changes except those packages.${RESET}"
+echo "  ${DIM}No API key is installed — you paste your own into the panel afterwards.${RESET}"
+echo
+
+if [ "$ASSUME_YES" != true ]; then
+  read -r -p "Continue? [Y/n] " reply
+  case "$reply" in
+  "" | y | Y | yes | YES) ;;
+  *)
+    echo "Cancelled. Nothing was changed."
+    exit 130
+    ;;
+  esac
+  echo
+fi
+
+mkdir -p "$BIN_DIR" "$UNIT_DIR"
+
+# Daemon ---------------------------------------------------------------------
+
+build_from_source() {
+  install_packages "${BUILD_PACKAGES[@]}" "${RUNTIME_PACKAGES[@]}"
+  step "Compiling perla-d ${DIM}(a few minutes the first time)${RESET}"
+  cargo install --locked --root "$PREFIX" \
+    --path "$ROOT/perla-voice/crates/perla-cli" --bin perla-d
+}
+
+download_release() {
+  local base="https://github.com/inawafalm/omarchy-perla/releases/download/v$VERSION"
+  local archive="perla-d-$TARGET.tar.gz"
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsSL --retry 2 -o "$tmp/$archive" "$base/$archive" || return 1
+  curl -fsSL --retry 2 -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" || return 1
+
+  # Guards against a truncated or corrupted download. It is not a signature:
+  # the checksums come from the same release, so the trust anchor is the
+  # repository you already chose to install.
+  (cd "$tmp" && sha256sum --check --ignore-missing --status SHA256SUMS) || {
+    warn "checksum mismatch on $archive"
+    return 1
+  }
+
+  tar -xzf "$tmp/$archive" -C "$tmp" || return 1
+  [ -f "$tmp/perla-d" ] || return 1
+  install -Dm755 "$tmp/perla-d" "$BINARY"
+}
+
+if [ "$FROM_SOURCE" = true ]; then
+  build_from_source
+else
+  step "Fetching perla-d v$VERSION"
+  install_packages "${RUNTIME_PACKAGES[@]}"
+  if download_release; then
+    info "installed the prebuilt daemon"
+  else
+    warn "no usable release for v$VERSION — compiling instead"
+    build_from_source
+  fi
+fi
+
+[ -x "$BINARY" ] || die "perla-d was not installed at $BINARY"
+# perla-d has no --version; --help is the cheapest proof that it actually runs
+# on this machine (a missing libasound would fail right here, not at first use).
+"$BINARY" --help >/dev/null 2>&1 || die "perla-d is installed but will not run — check that alsa-lib is present"
+info "perla-d is installed at $BINARY"
+
+# Service --------------------------------------------------------------------
+
+step "Enabling the perla user service"
+install -Dm644 "$ROOT/perla-voice/packaging/perla.service" "$UNIT_DIR/perla.service"
+systemctl --user daemon-reload
+systemctl --user enable --now perla.service
+info "$(systemctl --user is-active perla.service 2>/dev/null || echo "starting")"
+
+# Computer use ---------------------------------------------------------------
+
+if [ "$WITH_COMPUTER_USE" = true ]; then
+  install_packages "${HARNESS_PACKAGES[@]}"
+  step "Installing the computer-use harness"
+  uv tool install --force "$ROOT/omarchy-harness"
+  mkdir -p "$HOME/.grok/skills"
+  cp -R "$ROOT/omarchy-harness/skills/omarchy-harness" "$HOME/.grok/skills/"
+  info "omarchy-harness can see the screen, click, and type as you"
+fi
+
+# PATH -----------------------------------------------------------------------
+
+case ":$PATH:" in
+*":$BIN_DIR:"*) ;;
+*)
+  warn "$BIN_DIR is not on your PATH"
+  info "add it to ~/.bashrc or ~/.zshrc: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  info "Perla itself is fine — the plugin calls the daemon by absolute path."
+  ;;
+esac
+
+echo
+echo "${GREEN}${BOLD}Perla is installed.${RESET}"
+echo
+echo "  Click the pearl in your bar, paste your own OpenAI or xAI API key,"
+echo "  and press Save. Then say something."
+echo
+echo "  ${DIM}Remove it again with: $ROOT/bin/perla-uninstall${RESET}"
+echo
