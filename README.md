@@ -8,6 +8,10 @@ dictation tool; Perla is for conversations, actions, and spoken results.
 
 ![Perla turns spoken intent into Omarchy desktop action and talks back](preview.png)
 
+| Keyboard | Your voice |
+|---|---|
+| ~45 words/min | ~150 words/min |
+
 An orb in the bar, a local Rust daemon doing the realtime voice session.
 
 ## Install
