@@ -1005,7 +1005,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "perla-agents"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1023,7 +1023,7 @@ dependencies = [
 
 [[package]]
 name = "perla-audio"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "cpal",
@@ -1033,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "perla-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -1050,13 +1050,14 @@ dependencies = [
 
 [[package]]
 name = "perla-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
  "dirs",
  "futures-util",
+ "libc",
  "perla-agents",
  "perla-audio",
  "perla-hands",
@@ -1075,7 +1076,7 @@ dependencies = [
 
 [[package]]
 name = "perla-hands"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1091,7 +1092,7 @@ dependencies = [
 
 [[package]]
 name = "perla-herdr"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1107,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "perla-provider"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -1123,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "perla-tools"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "base64",

@@ -24,8 +24,9 @@ fn load() -> HashMap<String, Entry> {
     let Some(path) = store_path() else {
         return HashMap::new();
     };
-    std::fs::read_to_string(path)
-        .ok()
+    // Another predictable path: guarded so a planted FIFO cannot stall the
+    // end of a call, and a planted symlink cannot capture the recap.
+    crate::safeio::read_text_opt(&path)
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
 }
@@ -33,10 +34,10 @@ fn load() -> HashMap<String, Entry> {
 fn save(map: &HashMap<String, Entry>) {
     let Some(path) = store_path() else { return };
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        let _ = crate::safeio::ensure_private_dir(parent);
     }
     if let Ok(json) = serde_json::to_string_pretty(map) {
-        let _ = std::fs::write(path, json);
+        let _ = crate::safeio::write_private(&path, json.as_bytes());
     }
 }
 

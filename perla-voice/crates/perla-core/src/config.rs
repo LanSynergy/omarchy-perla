@@ -1,7 +1,6 @@
 //! Engine configuration. Local API keys only — resolved from (in order)
 //! explicit config file values, then environment variables.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -233,9 +232,10 @@ impl Config {
         };
         let mut config = Config::default();
         for path in candidates {
-            if path.exists() {
-                let text = std::fs::read_to_string(&path)
-                    .with_context(|| format!("reading {}", path.display()))?;
+            // Guarded rather than `exists()` + `read_to_string`: these paths are
+            // predictable, so a planted FIFO would otherwise park the daemon here
+            // forever and a planted huge file would read until memory ran out.
+            if let Some(text) = crate::safeio::read_text_capped(&path)? {
                 config =
                     toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
                 break;
@@ -399,16 +399,11 @@ pub struct SettingsPatch {
 
 /// Merge a settings patch into the user config file and return the public view.
 pub fn apply_settings_patch(path: &Path, patch: &SettingsPatch) -> Result<PublicSettings> {
-    let mut root = if path.exists() {
-        let text =
-            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        if text.trim().is_empty() {
-            toml::Value::Table(toml::map::Map::new())
-        } else {
+    let mut root = match crate::safeio::read_text_capped(path)? {
+        Some(text) if !text.trim().is_empty() => {
             toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?
         }
-    } else {
-        toml::Value::Table(toml::map::Map::new())
+        _ => toml::Value::Table(toml::map::Map::new()),
     };
 
     let table = root
@@ -491,50 +486,16 @@ pub fn apply_settings_patch(path: &Path, patch: &SettingsPatch) -> Result<Public
         }
     }
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
-                .with_context(|| format!("securing {}", parent.display()))?;
-        }
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        crate::safeio::ensure_private_dir(parent)?;
     }
     let body = toml::to_string_pretty(&root).context("serializing config")?;
-    write_private(path, body.as_bytes())?;
+    // This body carries the user's API key. It must never land anywhere but
+    // this exact path, and never half-written.
+    crate::safeio::write_private(path, body.as_bytes())?;
 
     let config = Config::load(Some(path))?;
     Ok(PublicSettings::from_config(&config))
-}
-
-fn write_private(path: &Path, body: &[u8]) -> Result<()> {
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).truncate(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options
-        .open(path)
-        .with_context(|| format!("opening {}", path.display()))?;
-    file.write_all(body)
-        .with_context(|| format!("writing {}", path.display()))?;
-    file.sync_all()
-        .with_context(|| format!("syncing {}", path.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = file
-            .metadata()
-            .with_context(|| format!("reading permissions for {}", path.display()))?
-            .permissions();
-        permissions.set_mode(0o600);
-        file.set_permissions(permissions)
-            .with_context(|| format!("securing {}", path.display()))?;
-    }
-    Ok(())
 }
 
 fn ensure_table<'a>(

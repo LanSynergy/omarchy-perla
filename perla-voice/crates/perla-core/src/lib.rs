@@ -14,6 +14,7 @@ pub mod engine;
 pub mod events;
 pub mod language;
 pub mod recap;
+pub mod safeio;
 pub mod sidechannel;
 
 pub use config::{

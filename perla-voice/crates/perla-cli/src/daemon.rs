@@ -210,6 +210,24 @@ fn ensure_private_dir(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Read one of our own predictable paths off the runtime thread, refusing
+/// symlinks, non-regular files, and anything oversized. `None` covers missing,
+/// hostile, and unreadable alike — every caller here has a sane empty case.
+async fn read_guarded(path: &Path) -> Option<String> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || perla_core::safeio::read_text_opt(&path))
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Atomic, owner-only replacement, off the runtime thread.
+async fn write_guarded(path: &Path, body: Vec<u8>) {
+    let path = path.to_path_buf();
+    let _ = tokio::task::spawn_blocking(move || perla_core::safeio::write_private(&path, &body))
+        .await;
+}
+
 fn secure_private_file(path: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -241,12 +259,16 @@ async fn append_log(path: &Path, role: Role, text: &str) {
     if let Some(parent) = path.parent() {
         ensure_private_dir(parent).ok();
     }
-    if let Ok(meta) = tokio::fs::metadata(path).await {
-        if meta.len() > LOG_MAX_BYTES {
-            if let Ok(body) = tokio::fs::read_to_string(path).await {
+    if let Ok(meta) = tokio::fs::symlink_metadata(path).await {
+        if meta.is_file() && meta.len() > LOG_MAX_BYTES {
+            // The trim rewrites the whole file, so it goes through the same
+            // guarded read and atomic replace the config uses.
+            let trimmed = read_guarded(path).await.map(|body| {
                 let lines: Vec<&str> = body.lines().collect();
-                let keep = lines[lines.len() / 2..].join("\n");
-                tokio::fs::write(path, format!("{keep}\n")).await.ok();
+                format!("{}\n", lines[lines.len() / 2..].join("\n"))
+            });
+            if let Some(keep) = trimmed {
+                write_guarded(path, keep.into_bytes()).await;
             }
         }
     }
@@ -764,7 +786,7 @@ async fn main() -> Result<()> {
         }
         "status" => {
             let (state_path, _) = paths();
-            match tokio::fs::read_to_string(&state_path).await {
+            match read_guarded(&state_path).await.ok_or(()) {
                 Ok(text) => {
                     print!("{text}");
                     if !text.ends_with('\n') {
@@ -901,7 +923,7 @@ async fn main() -> Result<()> {
                 }
             }
             let path = log_path();
-            let body = tokio::fs::read_to_string(&path).await.unwrap_or_default();
+            let body = read_guarded(&path).await.unwrap_or_default();
             let out = if as_json {
                 let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
                 let start = lines.len().saturating_sub(tail);
